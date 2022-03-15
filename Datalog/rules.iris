@@ -1,0 +1,269 @@
+
+live_Range_Out(?METH,?LINE,?VAR):- 
+	next(?METH,?LINE,?NEXTLINE),
+	live_Range_In(?METH,?NEXTLINE,?VAR).
+
+live_Range_In(?METH,?LINE,?VAR):- 
+	varUse(?METH,?LINE,?VAR).
+
+live_Range_In(?METH,?LINE,?VAR):- 
+	live_Range_Out(?METH,?LINE,?VAR),
+    !varUse(?METH,?LINE,?VAR),
+	!varDef(?METH,?LINE,?VAR).
+
+liveness(?METH, ?LINE, ?VAR, "IN") :- 
+	live_Range_In(?METH,?LINE,?VAR).
+
+liveness(?METH, ?LINE, ?VAR, "OUT") :- 
+	live_Range_Out(?METH,?LINE,?VAR).
+
+
+
+dead_Code(?METH,?LINE):- 	
+	next(?METH, ?LINE, ?NEXTLINE),	
+	varDef(?METH, ?LINE, ?VAR),		
+	!live_Range_In(?METH,?NEXTLINE,?VAR). 
+							
+	
+
+
+
+
+
+
+/*--------------------------------------Const Propagation-------------------------------------*/
+
+/*
+* constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT)
+* if there is no definition on this line there is only one Ancestor then propagate const to the ancestor. 
+*/
+constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT) :- 
+	next(?METH, ?PRELINE, ?LINE),
+	?LINE != 1,
+	!varDef(?METH, ?LINE, ?VAR),
+	!many_Ancestors(?METH, ?LINE),
+	constant_Propagation(?METH, ?PRELINE, ?VAR, ?CONSTANT).	
+
+
+/*
+* constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT)
+* If we have many ancestors and they agree on the definition then propagate const 
+*/
+
+constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT) :- 
+	!varDef(?METH, ?LINE, ?VAR),
+	many_Ancestors(?METH, ?LINE),
+	!different_Definitions(?METH, ?LINE, ?VAR),
+	!missing_Definition(?METH, ?LINE, ?VAR),	
+	next(?METH, ?PRELINE, ?LINE),
+	constant_Propagation(?METH, ?PRELINE, ?VAR, ?CONSTANT).
+									  				
+
+/*
+* constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT)
+* If there is a constmove there is a const propagation .
+*/
+constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT) :- 
+	constMove(?METH, ?LINE, ?VAR, ?CONSTANT).	
+
+
+/*-------------------------------CopyPropagation-------------------------------*/
+
+/*
+* If there is a var move instruction 
+*
+*/
+copy_Propagation(?METH, ?LINE, ?VARi, ?VARj) :- 
+	varMove(?METH, ?LINE, ?VARi, ?VARj).
+
+
+	
+
+/*
+* If the predecessor is varmove instruction propagate
+*
+*/
+ 
+copy_Propagation(?METH, ?LINE, ?VARi, ?VARn) :- 
+	?LINE != 1,	
+	!many_Ancestors(?METH, ?LINE),	
+	copy_Propagation(?METH, ?LINE, ?VARi, ?VARj),
+	next(?METH, ?PRELINE, ?LINE),
+	copy_Propagation(?METH, ?PRELINE, ?VARj, ?VARn).
+				
+/*
+* 
+*
+*/
+
+copy_Propagation(?METH, ?LINE, ?VARi, ?VARj) :-
+	!many_Ancestors(?METH, ?LINE),
+	next(?METH, ?PRELINE, ?LINE),
+	?LINE != 1,
+	!varDef(?METH, ?LINE, ?VARi),
+	!varDef(?METH, ?LINE, ?VARj),
+	copy_Propagation(?METH, ?PRELINE, ?VARi, ?VARj).
+
+/*
+* VAAAAAAAAAA
+*
+*/
+
+copy_Propagation(?METH, ?LINE, ?VARi, ?VARj) :- 
+	many_Ancestors(?METH, ?LINE),
+	next(?METH, ?PRELINE, ?LINE),	
+	!different_Definitions(?METH, ?LINE, ?VARi),
+	!different_Definitions(?METH, ?LINE, ?VARj),
+	!varDef(?METH, ?LINE, ?VARi),
+	!varDef(?METH, ?LINE, ?VARj),	
+	!missing_Definition(?METH, ?LINE, ?VARi),
+	!missing_Definition(?METH, ?LINE, ?VARj),
+	copy_Propagation(?METH, ?PRELINE, ?VARi, ?VARj).
+
+
+/*---------------------------------------Basic Block--------------------------------------*/
+
+
+/*------------------BEGIN---------------------*/
+/*
+* Basic block begins at the first statement
+*/
+begin(?METH, ?LINE) :- 
+	instruction(?METH, ?LINE, ?STATEMENT),
+	?LINE = 1.
+
+
+/*
+* Basic block begins at next instruction after jump unless there is a lable.
+*/
+begin(?METH, ?LINE) :- 
+	?PRELINE+1 = ?LINE,
+	instruction(?METH, ?PRELINE, ?STATEMENT),
+	next(?METH, ?PRELINE, ?NEXTLINE),
+	?NEXTLINE != ?LINE.
+
+
+/*
+* Basic block begins at label.
+*/
+begin(?METH, ?LINE) :- 
+	next(?METH, ?PRELINE, ?LINE),
+	?PRELINE+1 = ?T ,
+	?T != ?LINE.
+
+
+
+/*-------------------END---------------------*/
+
+/*
+* Basic block ends at the end of a function.
+*/
+end(?METH, ?LINE) :- 
+	instruction(?METH, ?LINE, ?STATEMENT),
+ 	!next(?METH, ?LINE, ?NEXTLINE).
+
+
+/*
+* Basic block ends at the end at label.
+*/
+end(?METH, ?LINE) :- 
+	?LINE + 1 = ?NEXTLINE,
+	instruction(?METH, ?NEXTLINE, ?STATEMENT),
+	next(?METH, ?PRELINE, ?NEXTLINE),
+	?PRELINE != ?LINE.
+						
+
+/*
+* Basic block ends at the end of a conditional jump.
+*/
+end(?METH, ?LINE) :- 
+	next(?METH, ?LINE, ?NEXTLINE),
+	?LINE + 1 = ?T,
+	?T != ?NEXTLINE.
+
+
+match_Begin_End(?METH, ?START, ?END) :- 
+	next(?METH, ?START, ?END),
+	?START + 1 = ?END,
+	!begin(?METH, ?END).
+
+
+match_Begin_End(?METH, ?START, ?END) :- 
+	next(?METH, ?START, ?LINE),
+	?START + 1 = ?LINE,
+	!begin(?METH, ?LINE),
+	match_Begin_End(?METH, ?LINE, ?END).
+
+
+match_Begin_End(?METH, ?BEGIN, ?END) :- 
+	instruction(?METH, ?BEGIN, ?STATEMENTi),
+	instruction(?METH, ?END, ?STATEMENTj),
+	?BEGIN = ?END.
+
+
+
+
+basic_Block(?METH, ?BEGIN, ?END) :- 
+	match_Begin_End(?METH, ?BEGIN, ?END),
+	begin(?METH, ?BEGIN),
+	end(?METH, ?END).
+
+
+/*-------------------------- Utility functions -------------------------------------------*/
+
+
+/*
+* many_Ancestors(?METH, ?LINE) : Meth = Methodname Line = linenum  
+* Line has many ancestors   
+*/   
+many_Ancestors(?METH, ?LINE) :- 
+	next(?METH, ?PRELINEi, ?LINE),
+	next(?METH, ?PRELINEj, ?LINE),
+	?PRELINEi != ?PRELINEj.
+ 
+/*
+* my_varDef(?METH, ?LINE, ?VAR, ?STATEMENT) : METH = Methodname ,LINE = linenum ,VAR = Var to be defined , STATEMENT = Instruction  
+* Get the instruction that defines the var .
+*/
+
+
+my_varDef(?METH, ?LINE, ?VAR, ?STATEMENT) :- 
+	varDef(?METH, ?LINE, ?VAR),
+	 instruction(?METH, ?LINE, ?STATEMENT).
+
+my_varDef(?METH, ?LINE, ?VAR, ?STATEMENT) :- 
+	next(?METH, ?PRELINE, ?LINE),
+	my_varDef(?METH, ?PRELINE, ?VAR, ?STATEMENT).
+
+
+
+
+/*
+* different_Definitions(?METH, ?LINE, ?VAR) : METH = Methodname ,LINE = linenum ,VAR = Var to be defined 
+* A variable predesesors statements that has different definition of the same var .
+* 
+*/
+different_Definitions(?METH, ?LINE, ?VAR) :- 
+	next(?METH, ?PRELINEi, ?LINE),
+  	next(?METH, ?PRELINEj, ?LINE),
+ 	?PRELINEi != ?PRELINEj,
+ 	my_varDef(?METH, ?PRELINEi, ?VAR, ?STATEMENTi),
+ 	my_varDef(?METH, ?PRELINEj, ?VAR, ?STATEMENTj),
+  	?STATEMENTi != ?STATEMENTj.
+
+
+/*
+* missing_Definition(?METH, ?LINE, ?VAR) : METH = Methodname ,LINE = linenum ,VAR = Var to be defined. 
+* Not all the ancestors have definition for the var .
+* 
+*/
+missing_Definition(?METH, ?LINE, ?VAR) :- 
+	my_varDef(?METH, ?PRELINEi, ?VAR, ?STATEMENTi),
+ 	!my_varDef(?METH, ?PRELINEj, ?VAR, ?STATEMENTj),	
+	next(?METH, ?PRELINEi, ?LINE),
+	next(?METH, ?PRELINEj, ?LINE),
+	?PRELINEi != ?PRELINEj.
+	
+  	
+
+

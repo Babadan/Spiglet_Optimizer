@@ -1,0 +1,18 @@
+all: compile
+
+
+compile: 
+	java -jar ../jtb132di.jar Spiglet.jj
+	java -jar ../javacc5.jar Spiglet-jtb.jj
+
+
+clean: 
+	rm -f *.class
+	rm -f ./MiniJavaParser.java
+	rm -f ./MiniJavaParserConstants.java
+	rm -f ./MiniJavaParserTokenManager.java
+	rm -f ./ParseException.java
+	rm -f ./Token.java
+	rm -f ./TokenMgrError.java
+	rm -rf visitor
+	rm -rf syntaxtree

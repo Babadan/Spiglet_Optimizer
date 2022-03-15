@@ -1,0 +1,7 @@
+
+?- liveness(?METH, ?LINE, ?VAR, ?INOUT).
+?- dead_Code(?METH, ?LINE).
+?- constant_Propagation(?METH, ?LINE, ?VAR, ?CONSTANT).
+?- copy_Propagation(?METH, ?LINE, ?VARA, ?VARB).
+?- basic_Block(?METH, ?BEGIN, ?END).
+
